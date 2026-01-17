@@ -1,10 +1,11 @@
 from django.shortcuts import render
-from rest_framework.viewsets import ModelViewSet
+from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from rest_framework import status
-from .models import Expense
-from .serializers import ExpenseSerializer
+from rest_framework.viewsets import ModelViewSet
+
+from .models import Category, Expense
+from .serializers import CategorySerializer, ExpenseSerializer
 
 # @api_view(["GET","POST"])
 # def category_list(request):
@@ -15,10 +16,10 @@ from .serializers import ExpenseSerializer
 #         categories = Category.objects.all()
 #         serializer = CategorySerializer(categories, many=True)
 #         return Response(serializer.data)
-    
+
 #     if request.method == "POST":
 #         serializer = CategorySerializer(data=request.data)
-        
+
 #         if serializer.is_valid():
 #             serializer.save()
 #             return Response(serializer.data, status= status.HTTP_201_CREATED)
@@ -30,7 +31,7 @@ from .serializers import ExpenseSerializer
 #         expenses = Expense.objects.all()
 #         serializer = ExpenseSerializer(expenses, many=True)
 #         return Response(serializer.data)
-    
+
 #     if request.method == "POST":
 #         serializer = ExpenseSerializer(data=request.data)
 
@@ -38,8 +39,19 @@ from .serializers import ExpenseSerializer
 #             serializer.save()
 #             return Response(serializer.data, status = status.HTTP_201_CREATED)
 #         return Response(serializer.error, status = status.HTTP_400_BAD_REQUEST)
-    
+
+
 class ExpenseViewSet(ModelViewSet):
+    """
+    ViewSet for managing Expense CRUD operations.
+    """
+
     model = Expense
     serializer_class = ExpenseSerializer
     queryset = Expense.objects.all()
+
+
+class CategoryViewSet(ModelViewSet):
+    model = Category
+    serializer_class = CategorySerializer
+    queryset = Category.objects.all()
