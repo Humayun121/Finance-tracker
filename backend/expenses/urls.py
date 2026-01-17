@@ -1,6 +1,15 @@
 from django.urls import path
-from .views import category_list
+from .views import ExpenseViewSet
+from rest_framework import routers
 
-urlpatterns = [
-    path("categories/", category_list),
-]
+router = routers.DefaultRouter()
+
+router.register("expense", ExpenseViewSet)
+
+urlpatterns = router.urls
+
+
+# urlpatterns = [
+#     path("categories/", category_list),
+#     path("expenses/", expense_list, name="expense-list"),
+# ]
