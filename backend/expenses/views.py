@@ -48,7 +48,15 @@ class ExpenseViewSet(ModelViewSet):
 
     model = Expense
     serializer_class = ExpenseSerializer
-    queryset = Expense.objects.all()
+    
+    def get_queryset(self):
+        queryset = Expense.objects.all()
+        category_id = self.request.query_params.get("category")
+
+        if category_id:
+            queryset = queryset.filter(category_id = category_id)
+        
+        return queryset
 
 
 class CategoryViewSet(ModelViewSet):
