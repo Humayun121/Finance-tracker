@@ -78,3 +78,9 @@ class CategoryViewSet(ModelViewSet):
     model = Category
     serializer_class = CategorySerializer
     queryset = Category.objects.all()
+
+def expense_demo(request):
+    """
+    Demo page for showing how the Expense API can be consumed.
+    """
+    return render(request, "expenses/expenses_demo.html")
