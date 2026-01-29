@@ -5,8 +5,8 @@ from .views import ExpenseViewSet, CategoryViewSet, expense_demo
 
 router = routers.DefaultRouter()
 
-router.register("expense", ExpenseViewSet, basename="expense")
-router.register("category", CategoryViewSet, basename="category")
+router.register("expenses", ExpenseViewSet, basename="expense")
+router.register("categories", CategoryViewSet, basename="category")
 
 
 urlpatterns = router.urls
