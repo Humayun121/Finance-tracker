@@ -7,15 +7,15 @@ export async function getExpenses() {
         throw new Error("Failed to fetch expenes")
     }
 
-    return reponse.json()
+    return response.json()
 }
 
 export async function getCategories() {
-    const reponse = await fetch(`${API_BASE}/categories/`);
+    const response = await fetch(`${API_BASE}/categories/`);
 
     if (!response.ok) {
         throw new Error("Failed to fetch categories")
     }
 
-    return reponse.json()
+    return response.json()
 }
