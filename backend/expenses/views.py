@@ -8,40 +8,6 @@ from django.utils.dateparse import parse_date
 from .models import Category, Expense
 from .serializers import CategorySerializer, ExpenseSerializer
 
-# @api_view(["GET","POST"])
-# def category_list(request):
-#     """
-#     List all categories or create a new category
-#     """
-#     if request.method == "GET":
-#         categories = Category.objects.all()
-#         serializer = CategorySerializer(categories, many=True)
-#         return Response(serializer.data)
-
-#     if request.method == "POST":
-#         serializer = CategorySerializer(data=request.data)
-
-#         if serializer.is_valid():
-#             serializer.save()
-#             return Response(serializer.data, status= status.HTTP_201_CREATED)
-#         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-# @api_view(["GET", "PUT"])
-# def expense_list(request):
-#     if request.method == "GET":
-#         expenses = Expense.objects.all()
-#         serializer = ExpenseSerializer(expenses, many=True)
-#         return Response(serializer.data)
-
-#     if request.method == "POST":
-#         serializer = ExpenseSerializer(data=request.data)
-
-#         if serializer.is_valid():
-#             serializer.save()
-#             return Response(serializer.data, status = status.HTTP_201_CREATED)
-#         return Response(serializer.error, status = status.HTTP_400_BAD_REQUEST)
-
-
 class ExpenseViewSet(ModelViewSet):
     """
     ViewSet for managing Expense CRUD operations.
@@ -52,7 +18,9 @@ class ExpenseViewSet(ModelViewSet):
     serializer_class = ExpenseSerializer
     
     def get_queryset(self):
-        queryset = Expense.objects.all()
+        queryset = Expense.objects.filter(
+            user = self.request.user
+        )
         category_id = self.request.query_params.get("category")
 
         # Category filter
