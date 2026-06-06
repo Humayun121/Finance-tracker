@@ -15,7 +15,6 @@ class ExpenseViewSet(ModelViewSet):
     Supports filtering by catgeory and date range.
     """
 
-    model = Expense
     permission_classes = [IsAuthenticated]
     serializer_class = ExpenseSerializer
     
@@ -38,16 +37,27 @@ class ExpenseViewSet(ModelViewSet):
               
         if end_date:
             queryset = queryset.filter(date__lte=parse_date(end_date))
-
-
-        
+  
         return queryset
+    
+    def perform_create(self, serializer):
+        serializer.save(
+        user=self.request.user
+    )
 
 
 class CategoryViewSet(ModelViewSet):
-    model = Category
+    permission_classes = [IsAuthenticated]
     serializer_class = CategorySerializer
-    queryset = Category.objects.all()
+    def get_queryset(self):
+        return Category.objects.filter(
+            user=self.request.user
+        )
+    
+    def perform_create(self, serializer):
+        serializer.save(
+        user=self.request.user
+    )
 
 def expense_demo(request):
     """
