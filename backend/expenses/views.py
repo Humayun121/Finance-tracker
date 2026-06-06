@@ -4,6 +4,7 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 from django.utils.dateparse import parse_date
+from rest_framework.permissions import IsAuthenticated
 
 from .models import Category, Expense
 from .serializers import CategorySerializer, ExpenseSerializer
@@ -15,6 +16,7 @@ class ExpenseViewSet(ModelViewSet):
     """
 
     model = Expense
+    permission_classes = [IsAuthenticated]
     serializer_class = ExpenseSerializer
     
     def get_queryset(self):
