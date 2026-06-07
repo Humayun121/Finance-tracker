@@ -24,3 +24,13 @@ class ExpenseSerializer(serializers.ModelSerializer):
         # field = ["id", "amount", "category", "description", "date"]
         fields = ["id", "amount", "category", "description", "date"]
         # fields = "__all__"
+
+    def validate_category(self, category):
+        user = self.context["request"].user
+
+        if category.user != user:
+            raise serializers.ValidationError(
+                "You can only access your own categories"
+            )
+        
+        return category 
