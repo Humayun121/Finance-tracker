@@ -10,3 +10,10 @@ export interface Expense {
   description: string;
   date: string;
 }
+
+export interface CreateExpense {
+  amount: string;
+  category: number;
+  description: string;
+  date: string;
+}
