@@ -1,4 +1,4 @@
-import type { Expense } from '../types/models';
+import type { Expense, CreateExpense  } from '../types/models';
 import { apiFetch } from './client';
 
 interface GetExpensesParams {
@@ -14,4 +14,21 @@ export async function getExpenses(params: GetExpensesParams = {}): Promise<Expen
   const qs = query.toString();
   const res = await apiFetch(`/api/expenses/${qs ? `?${qs}` : ''}`);
   return res.json();
+}
+
+export async function createExpense(
+  expense: CreateExpense
+): Promise<Expense> {
+  const res = await apiFetch('/api/expenses/', {
+    method: 'POST',
+    body: JSON.stringify(expense),
+  });
+
+  return res.json();
+}
+
+export async function deleteExpense(id: number): Promise<void> {
+  await apiFetch(`/api/expenses/${id}/`, {
+    method: 'DELETE',
+  });
 }
