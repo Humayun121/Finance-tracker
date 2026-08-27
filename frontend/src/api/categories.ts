@@ -14,3 +14,9 @@ export async function createCategory(name: string): Promise<Category> {
 
   return res.json();
 }
+
+export async function deleteCategory(id: number): Promise<void> {
+  await apiFetch(`/api/categories/${id}/`, {
+    method: 'DELETE',
+  });
+}

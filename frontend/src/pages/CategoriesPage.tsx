@@ -1,6 +1,6 @@
 import { Nav } from '../components/layout/Nav';
 import type { Category } from '../types/models';
-import { createCategory, getCategories } from '../api/categories';
+import { createCategory, deleteCategory, getCategories } from '../api/categories';
 import { useEffect, useState } from 'react';
 
 export function CategoriesPage() {
@@ -28,6 +28,14 @@ export function CategoriesPage() {
     setNewCategory('');
   }
 
+  async function handleDeleteCategory(id: number) {
+    await deleteCategory(id);
+
+    setCategories(
+      categories.filter((category)=> category.id !==id)
+    );
+  }
+
   return (
     <div>
       <Nav />
@@ -43,10 +51,15 @@ export function CategoriesPage() {
       Add Category
       </button>
         
+        {categories.map((category) => 
+          <div key={category.id}>
+            <p>{category.name}</p>
 
-        {categories.map((category) => (
-          <p key={category.id}>{category.name}</p>
-        ))}
+            <button onClick={()=> handleDeleteCategory(category.id)}>
+              Delete
+            </button>
+          </div>
+        )}
 
       </div>
     </div>
