@@ -51,7 +51,7 @@ export function LandingPage() {
           <Link to="/login" style={{ fontSize: 14 }}>
             Log in
           </Link>
-          <Link to="/login" className="btn btn-primary">
+          <Link to="/signup" className="btn btn-primary">
             Sign up
           </Link>
         </div>
@@ -86,7 +86,7 @@ export function LandingPage() {
             week, month and year.
           </p>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-3)' }}>
-            <Link to="/login" className="btn btn-primary" style={{ fontSize: 15, padding: '14px 20px' }}>
+            <Link to="/signup" className="btn btn-primary" style={{ fontSize: 15, padding: '14px 20px' }}>
               Get started
             </Link>
             <Link to="/login" className="btn btn-secondary" style={{ fontSize: 15, padding: '14px 20px' }}>

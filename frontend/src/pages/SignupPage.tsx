@@ -2,12 +2,13 @@ import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/useAuth';
 
-export function LoginPage() {
+export function SignupPage() {
   const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const { login } = useAuth();
+  const { register } = useAuth();
   const navigate = useNavigate();
 
   async function handleSubmit(e: FormEvent) {
@@ -15,10 +16,10 @@ export function LoginPage() {
     setError(null);
     setSubmitting(true);
     try {
-      await login(username, password);
+      await register(username, email, password);
       navigate('/dashboard');
-    } catch {
-      setError('Invalid username or password');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not create account');
     } finally {
       setSubmitting(false);
     }
@@ -26,7 +27,7 @@ export function LoginPage() {
 
   return (
     <div style={{ maxWidth: 320, margin: '80px auto', padding: 'var(--space-4)' }}>
-      <h1>Login</h1>
+      <h1>Sign up</h1>
       <form onSubmit={handleSubmit}>
         <div className="field">
           <label htmlFor="username">Username</label>
@@ -40,6 +41,18 @@ export function LoginPage() {
           />
         </div>
         <div className="field">
+          <label htmlFor="email">Email</label>
+          <input
+            id="email"
+            type="email"
+            className="input"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            autoComplete="email"
+            required
+          />
+        </div>
+        <div className="field">
           <label htmlFor="password">Password</label>
           <input
             id="password"
@@ -47,17 +60,17 @@ export function LoginPage() {
             className="input"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            autoComplete="current-password"
+            autoComplete="new-password"
             required
           />
         </div>
         {error && <p style={{ color: 'var(--color-accent)' }}>{error}</p>}
         <button type="submit" className="btn btn-primary btn-block" disabled={submitting}>
-          {submitting ? 'Logging in...' : 'Log in'}
+          {submitting ? 'Creating account...' : 'Sign up'}
         </button>
       </form>
       <p style={{ marginTop: 'var(--space-4)', fontSize: 14 }}>
-        Don't have an account? <Link to="/signup">Sign up</Link>
+        Already have an account? <Link to="/login">Log in</Link>
       </p>
     </div>
   );
