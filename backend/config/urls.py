@@ -22,7 +22,10 @@ from rest_framework_simplejwt.views import (
     TokenRefreshView,
 )
 
-api_patterns = [path("", include("expenses.urls"))]
+api_patterns = [
+    path("", include("expenses.urls")),
+    path("", include("accounts.urls")),
+]
 
 urlpatterns = [
     path("admin/", admin.site.urls),
