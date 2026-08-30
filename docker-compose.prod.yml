@@ -1,0 +1,42 @@
+name: Finance-tracker-prod
+
+services:
+  web:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    container_name: web_prod_C
+    env_file:
+      - .env.prod
+    depends_on:
+      db:
+        condition: service_healthy
+        restart: true
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+    container_name: frontend_prod_C
+    ports:
+      - '80:80'
+    depends_on:
+      - web
+
+  db:
+    image: postgres:17
+    container_name: postgres_prod_C
+    volumes:
+      - postgres_data_prod:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data_prod:
