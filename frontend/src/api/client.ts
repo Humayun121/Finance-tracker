@@ -1,4 +1,4 @@
-import { clearTokens, getAccessToken, getRefreshToken, setAccessToken } from '../auth/tokenStorage';
+import { AUTH_EXPIRED_EVENT, clearTokens, getAccessToken, getRefreshToken, setAccessToken } from '../auth/tokenStorage';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
@@ -11,7 +11,7 @@ export class ApiError extends Error {
   }
 }
 
-async function refreshAccessToken(): Promise<string | null> {
+export async function refreshAccessToken(): Promise<string | null> {
   const refresh = getRefreshToken();
   if (!refresh) return null;
 
@@ -26,6 +26,12 @@ async function refreshAccessToken(): Promise<string | null> {
   const data = await res.json();
   setAccessToken(data.access);
   return data.access;
+}
+
+/** Clears tokens and tells AuthContext the session is dead, so it can redirect to /login. */
+function endExpiredSession(): void {
+  clearTokens();
+  window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
 }
 
 /**
@@ -49,8 +55,11 @@ export async function apiFetch(path: string, options: RequestInit = {}): Promise
     const newAccess = await refreshAccessToken();
     if (newAccess) {
       res = await doFetch(newAccess);
+      if (res.status === 401) {
+        endExpiredSession();
+      }
     } else {
-      clearTokens();
+      endExpiredSession();
     }
   }
 
