@@ -15,6 +15,17 @@ services:
         condition: service_healthy
         restart: true
     
+  frontend:
+    build: ./frontend
+    container_name: frontend_C
+    ports:
+      - '5173:5173'
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - web
+
   db:
     image: postgres:17
     container_name: postgres_C
