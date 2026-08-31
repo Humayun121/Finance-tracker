@@ -13,17 +13,19 @@ services:
         condition: service_healthy
         restart: true
 
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile.prod
-    container_name: frontend_prod_C
-    ports:
-      - '80:80'
-    volumes:
-      - ./certbot/www:/var/www/certbot
-    depends_on:
-      - web
+frontend:
+  build:
+    context: ./frontend
+    dockerfile: Dockerfile.prod
+  container_name: frontend_prod_C
+  ports:
+    - '80:80'
+    - '443:443'
+  volumes:
+    - ./certbot/www:/var/www/certbot
+    - /etc/letsencrypt:/etc/letsencrypt:ro
+  depends_on:
+    - web
     
 
   db:
