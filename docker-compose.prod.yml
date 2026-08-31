@@ -20,8 +20,11 @@ services:
     container_name: frontend_prod_C
     ports:
       - '80:80'
+    volumes:
+      - ./certbot/www:/var/www/certbot
     depends_on:
       - web
+    
 
   db:
     image: postgres:17
