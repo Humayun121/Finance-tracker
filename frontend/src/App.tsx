@@ -5,7 +5,6 @@ import { DashboardPage } from './pages/DashboardPage';
 import { ExpensesPage } from './pages/ExpensesPage';
 import { LandingPage } from './pages/LandingPage';
 import { LoginPage } from './pages/LoginPage';
-import { SettingsPage } from './pages/SettingsPage';
 import { SignupPage } from './pages/SignupPage';
 
 function App() {
@@ -35,14 +34,6 @@ function App() {
         element={
           <ProtectedRoute>
             <CategoriesPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/settings"
-        element={
-          <ProtectedRoute>
-            <SettingsPage />
           </ProtectedRoute>
         }
       />
