@@ -16,7 +16,6 @@ export function Nav() {
       <NavLink to="/dashboard">Dashboard</NavLink>
       <NavLink to="/expenses">Expenses</NavLink>
       <NavLink to="/categories">Categories</NavLink>
-      <NavLink to="/settings">Settings</NavLink>
       <button type="button" className="btn btn-secondary" onClick={handleLogout}>
         Log out
       </button>
