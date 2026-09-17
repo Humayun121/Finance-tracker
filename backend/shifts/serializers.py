@@ -2,6 +2,7 @@ from rest_framework import serializers
 
 from .models import Shift
 
+
 class ShiftSerializer(serializers.ModelSerializer):
 
     class Meta:
@@ -14,16 +15,12 @@ class ShiftSerializer(serializers.ModelSerializer):
             "break_minutes",
             "hourly_rate",
         ]
-    
+
     def validate(self, data):
         start_time = data["start_time"]
         end_time = data["end_time"]
 
         if end_time <= start_time:
-            raise serializers.ValidationError(
-                "End time must be after start time"
-            )
+            raise serializers.ValidationError("End time must be after start time")
 
-        return data 
-    
-        
+        return data

@@ -1,3 +1,17 @@
-from django.shortcuts import render
+from rest_framework.viewsets import ModelViewSet
 
-# Create your views here.
+from .models import Shift
+from .serializers import ShiftSerializer
+
+
+class ShiftViewSet(ModelViewSet):
+
+    serializer_class = ShiftSerializer
+
+    def get_queryset(self):
+        queryset = Shift.objects.filter(user=self.request.user)
+
+        return queryset
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)

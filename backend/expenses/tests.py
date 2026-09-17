@@ -15,7 +15,9 @@ def test_category_create_success_201(auth_client):
     Function checks that an authenticated user can create a category,
     returning HTTP 201
     """
-    response = auth_client.post("/api/categories/", {"name": "Groceries"}, format="json")
+    response = auth_client.post(
+        "/api/categories/", {"name": "Groceries"}, format="json"
+    )
 
     assert response.status_code == 201
     assert Category.objects.count() == 1
@@ -57,7 +59,9 @@ def test_expense_create_other_users_category_400(auth_client):
     Function checks that creating an expense against a category owned by
     another user returns HTTP 400
     """
-    other_user = User.objects.create_user(username="otheruser", password="StrongPass123")
+    other_user = User.objects.create_user(
+        username="otheruser", password="StrongPass123"
+    )
     other_category = Category.objects.create(user=other_user, name="Other")
 
     payload = {
@@ -83,7 +87,10 @@ def test_expense_list_filters_by_category(auth_client, category):
         user=category.user, amount=10, category=category, date="2026-08-01T12:00:00Z"
     )
     Expense.objects.create(
-        user=category.user, amount=20, category=other_category, date="2026-08-01T12:00:00Z"
+        user=category.user,
+        amount=20,
+        category=other_category,
+        date="2026-08-01T12:00:00Z",
     )
 
     response = auth_client.get(f"/api/expenses/?category={category.id}")

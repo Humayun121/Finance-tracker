@@ -29,8 +29,6 @@ class ExpenseSerializer(serializers.ModelSerializer):
         user = self.context["request"].user
 
         if category.user != user:
-            raise serializers.ValidationError(
-                "You can only access your own categories"
-            )
-        
-        return category 
+            raise serializers.ValidationError("You can only access your own categories")
+
+        return category
