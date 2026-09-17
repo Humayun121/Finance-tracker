@@ -29,12 +29,3 @@ class ShiftSerializer(serializers.ModelSerializer):
             "paid_hours",
             "estimated_pay",
         ]
-
-    def validate(self, data):
-        start_time = data["start_time"]
-        end_time = data["end_time"]
-
-        if end_time <= start_time:
-            raise serializers.ValidationError("End time must be after start time")
-
-        return data

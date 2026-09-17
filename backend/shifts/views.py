@@ -26,7 +26,7 @@ class ShiftViewSet(ModelViewSet):
         if end_date:
             queryset = queryset.filter(date__lte=end_date)
 
-        return queryset
+        return queryset.order_by("date", "start_time")
     
     @action(detail=False, methods=["get"])
     def summary(self, request):
