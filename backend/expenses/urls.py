@@ -1,7 +1,7 @@
 from django.urls import path
 from rest_framework import routers
 
-from .views import ExpenseViewSet, CategoryViewSet, expense_demo
+from .views import CategoryViewSet, ExpenseViewSet, expense_demo
 
 router = routers.DefaultRouter()
 

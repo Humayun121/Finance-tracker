@@ -1,13 +1,14 @@
 from django.shortcuts import render
+from django.utils.dateparse import parse_date
 from rest_framework import status
 from rest_framework.decorators import api_view
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
-from django.utils.dateparse import parse_date
-from rest_framework.permissions import IsAuthenticated
 
 from .models import Category, Expense
 from .serializers import CategorySerializer, ExpenseSerializer
+
 
 class ExpenseViewSet(ModelViewSet):
     """
@@ -17,47 +18,41 @@ class ExpenseViewSet(ModelViewSet):
 
     permission_classes = [IsAuthenticated]
     serializer_class = ExpenseSerializer
-    
+
     def get_queryset(self):
-        queryset = Expense.objects.filter(
-            user = self.request.user
-        )
+        queryset = Expense.objects.filter(user=self.request.user)
         category_id = self.request.query_params.get("category")
 
         # Category filter
         if category_id:
-            queryset = queryset.filter(category_id = category_id)
+            queryset = queryset.filter(category_id=category_id)
 
         # Date filter
         start_date = self.request.query_params.get("start_date")
         end_date = self.request.query_params.get("end_date")
 
         if start_date:
-            queryset = queryset.filter(date__gte= parse_date(start_date))
-              
+            queryset = queryset.filter(date__gte=parse_date(start_date))
+
         if end_date:
             queryset = queryset.filter(date__lte=parse_date(end_date))
-  
+
         return queryset
-    
+
     def perform_create(self, serializer):
-        serializer.save(
-        user=self.request.user
-    )
+        serializer.save(user=self.request.user)
 
 
 class CategoryViewSet(ModelViewSet):
     permission_classes = [IsAuthenticated]
     serializer_class = CategorySerializer
+
     def get_queryset(self):
-        return Category.objects.filter(
-            user=self.request.user
-        )
-    
+        return Category.objects.filter(user=self.request.user)
+
     def perform_create(self, serializer):
-        serializer.save(
-        user=self.request.user
-    )
+        serializer.save(user=self.request.user)
+
 
 def expense_demo(request):
     """
