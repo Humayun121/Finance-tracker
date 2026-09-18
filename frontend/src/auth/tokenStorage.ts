@@ -23,24 +23,40 @@ export function isAccessTokenExpired(): boolean {
   return Date.now() >= exp * 1000;
 }
 
+/**
+ * "Keep me logged in" tokens live in localStorage; otherwise they live in
+ * sessionStorage and end with the browser tab. Reads check both.
+ */
+function readToken(key: string): string | null {
+  return localStorage.getItem(key) ?? sessionStorage.getItem(key);
+}
+
+function activeStorage(): Storage {
+  return localStorage.getItem(REFRESH_TOKEN_KEY) !== null ? localStorage : sessionStorage;
+}
+
 export function getAccessToken(): string | null {
-  return localStorage.getItem(ACCESS_TOKEN_KEY);
+  return readToken(ACCESS_TOKEN_KEY);
 }
 
 export function getRefreshToken(): string | null {
-  return localStorage.getItem(REFRESH_TOKEN_KEY);
+  return readToken(REFRESH_TOKEN_KEY);
 }
 
-export function setTokens(access: string, refresh: string): void {
-  localStorage.setItem(ACCESS_TOKEN_KEY, access);
-  localStorage.setItem(REFRESH_TOKEN_KEY, refresh);
+export function setTokens(access: string, refresh: string, remember = true): void {
+  clearTokens();
+  const storage = remember ? localStorage : sessionStorage;
+  storage.setItem(ACCESS_TOKEN_KEY, access);
+  storage.setItem(REFRESH_TOKEN_KEY, refresh);
 }
 
 export function setAccessToken(access: string): void {
-  localStorage.setItem(ACCESS_TOKEN_KEY, access);
+  activeStorage().setItem(ACCESS_TOKEN_KEY, access);
 }
 
 export function clearTokens(): void {
-  localStorage.removeItem(ACCESS_TOKEN_KEY);
-  localStorage.removeItem(REFRESH_TOKEN_KEY);
+  for (const storage of [localStorage, sessionStorage]) {
+    storage.removeItem(ACCESS_TOKEN_KEY);
+    storage.removeItem(REFRESH_TOKEN_KEY);
+  }
 }

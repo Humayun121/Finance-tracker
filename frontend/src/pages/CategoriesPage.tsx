@@ -1,153 +1,133 @@
-import { Nav } from '../components/layout/Nav';
-import type { Category } from '../types/models';
+import { Plus } from 'lucide-react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { createCategory, deleteCategory, getCategories } from '../api/categories';
-import { useEffect, useState } from 'react';
+import { getExpenses } from '../api/expenses';
+import { PageHeader } from '../components/layout/PageHeader';
+import { InlineError, LoadingRow } from '../components/ui/Feedback';
+import type { Category } from '../types/models';
+
+function usageLabel(count: number): string {
+  return count === 1 ? '1 expense' : `${count} expenses`;
+}
 
 export function CategoriesPage() {
   const [categories, setCategories] = useState<Category[]>([]);
-  const [newCategory, setNewCategory] = useState('');
+  const [usage, setUsage] = useState<Map<number, number>>(new Map());
+  const [draft, setDraft] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [adding, setAdding] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function load() {
+    setError(null);
+    try {
+      const [cats, expenses] = await Promise.all([getCategories(), getExpenses()]);
+      const counts = new Map<number, number>();
+      for (const e of expenses) counts.set(e.category, (counts.get(e.category) ?? 0) + 1);
+      setCategories(cats);
+      setUsage(counts);
+    } catch {
+      setError('Could not load categories. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
-    async function fetchCategories() {
-      const data = await getCategories();
-      setCategories(data);
-    }
-    fetchCategories();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch on mount
+    load();
   }, []);
 
-  async function handleAddCategory() {
-    const trimmedCategory = newCategory.trim()
+  async function handleAdd(event: FormEvent) {
+    event.preventDefault();
+    const name = draft.trim();
+    if (!name) return;
 
-    if (!trimmedCategory) {
-      return;
+    setAdding(true);
+    setError(null);
+    try {
+      const created = await createCategory(name);
+      setCategories((prev) => [...prev, created]);
+      setDraft('');
+    } catch {
+      setError('Could not add category. Please try again.');
+    } finally {
+      setAdding(false);
     }
-
-    const createdCategory = await createCategory(trimmedCategory);
-
-    setCategories([...categories, createdCategory]);
-    setNewCategory('');
   }
 
-  async function handleDeleteCategory(id: number) {
-    await deleteCategory(id);
+  async function handleDelete(category: Category) {
+    const count = usage.get(category.id) ?? 0;
+    const warning = count > 0
+      ? `Delete "${category.name}"? Its ${usageLabel(count)} will be deleted too.`
+      : `Delete "${category.name}"?`;
+    if (!window.confirm(warning)) return;
 
-    setCategories(
-      categories.filter((category)=> category.id !==id)
-    );
+    setError(null);
+    try {
+      await deleteCategory(category.id);
+      setCategories((prev) => prev.filter((c) => c.id !== category.id));
+    } catch {
+      setError('Could not delete category. Please try again.');
+    }
   }
 
-  const hasCategories = categories.length > 0;
   const countLabel = categories.length === 1 ? '1 category' : `${categories.length} categories`;
 
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        position: 'relative',
-        overflow: 'hidden',
-        background:
-          'radial-gradient(ellipse 900px 500px at 20% 0%, color-mix(in srgb, var(--color-accent) 22%, transparent), transparent 70%), var(--color-bg)',
-      }}
-    >
-      <div
-        style={{
-          position: 'absolute',
-          left: -160,
-          bottom: -160,
-          width: 340,
-          height: 340,
-          borderRadius: '50%',
-          border: '1px solid color-mix(in srgb, var(--color-accent) 45%, transparent)',
-          pointerEvents: 'none',
-        }}
-      />
-      <div
-        style={{
-          position: 'absolute',
-          left: -90,
-          bottom: -90,
-          width: 200,
-          height: 200,
-          borderRadius: '50%',
-          border: '1px solid var(--color-divider)',
-          pointerEvents: 'none',
-        }}
-      />
-
-      <Nav />
-
-      <div style={{ position: 'relative', zIndex: 1, maxWidth: 760, margin: '0 auto', padding: 'var(--space-8) var(--space-6)' }}>
-        <h1 style={{ marginBottom: 2 }}>Categories</h1>
-        <div className="text-muted">Categories are used to organise your expenses.</div>
-
-        <hr className="hr" />
-
-        <div className="card elev-sm">
-          <form
-            style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-3)', alignItems: 'flex-end' }}
-            onSubmit={(event) => {
-              event.preventDefault();
-              handleAddCategory();
-            }}
-          >
-            <div className="field" style={{ flex: '1 1 260px', minWidth: 0, margin: 0 }}>
-              <label htmlFor="new-category">New category</label>
+    <>
+      <PageHeader title="Categories" subtitle="Categories are used to organise your expenses." />
+      <div className="page-body page-body-narrow">
+        <div className="panel panel-pad">
+          <form className="inline-form" onSubmit={handleAdd}>
+            <div className="field">
+              <label htmlFor="c-new">New category</label>
               <input
                 className="input"
-                id="new-category"
+                id="c-new"
                 type="text"
+                maxLength={200}
                 placeholder="e.g. Groceries"
-                value={newCategory}
-                onChange={(event) => setNewCategory(event.target.value)}
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
               />
             </div>
-            <button className="btn btn-primary" type="submit">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+            <button className="btn btn-primary" type="submit" disabled={!draft.trim() || adding}>
+              <Plus size={15} aria-hidden="true" />
               Add category
             </button>
           </form>
         </div>
 
-        {hasCategories ? (
-          <div style={{ marginTop: 'var(--space-6)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 'var(--space-3)' }}>
-              <h4 style={{ margin: 0 }}>All categories</h4>
-              <span className="text-muted" style={{ fontSize: 12 }}>{countLabel}</span>
+        {error && <InlineError message={error} />}
+
+        {loading ? (
+          <div className="panel"><LoadingRow /></div>
+        ) : categories.length > 0 ? (
+          <div className="panel">
+            <div className="panel-head panel-head-ruled">
+              <div className="panel-title">All categories</div>
+              <span className="panel-sub">{countLabel}</span>
             </div>
-            <div className="card elev-sm" style={{ padding: 0 }}>
-              {categories.map((category) => (
-                <div
-                  key={category.id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: 'var(--space-4)',
-                    padding: 'var(--space-3) var(--space-4)',
-                    borderTop: '1px solid var(--color-divider)',
-                  }}
-                >
-                  <span style={{ fontSize: 15 }}>{category.name}</span>
-                  <button
-                    className="btn btn-ghost"
-                    style={{ color: 'var(--color-accent-700)' }}
-                    onClick={() => handleDeleteCategory(category.id)}
-                  >
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                    Delete
-                  </button>
+            {categories.map((c) => (
+              <div className="cat-row row-hover" key={c.id}>
+                <div>
+                  <div className="cat-row-name">{c.name}</div>
+                  <div className="cat-row-usage">{usageLabel(usage.get(c.id) ?? 0)}</div>
                 </div>
-              ))}
-            </div>
+                <button type="button" className="btn btn-ghost btn-danger" onClick={() => handleDelete(c)}>
+                  Delete
+                </button>
+              </div>
+            ))}
           </div>
         ) : (
-          <div className="card elev-sm" style={{ marginTop: 'var(--space-6)', padding: 'var(--space-8) var(--space-6)' }}>
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: 'var(--space-3)' }}><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42Z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/></svg>
-            <h4 style={{ marginBottom: 'var(--space-1)' }}>No categories yet</h4>
-            <p className="text-muted" style={{ margin: 0, maxWidth: '44ch' }}>Add your first category above to start grouping your expenses.</p>
+          <div className="panel panel-pad">
+            <div className="empty-title">No categories yet</div>
+            <p className="empty-body">Add your first category above to start grouping your expenses.</p>
           </div>
         )}
       </div>
-    </div>
+    </>
   );
 }

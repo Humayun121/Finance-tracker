@@ -1,191 +1,285 @@
-import { useEffect, useState } from 'react';
+import { Plus } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { getCategories } from '../api/categories';
 import { getExpenses } from '../api/expenses';
-import { Nav } from '../components/layout/Nav';
-import type { Category, Expense } from '../types/models';
+import { getShifts, getShiftSummary } from '../api/shifts';
+import { TrendChart } from '../components/dashboard/TrendChart';
+import { ExpenseModal } from '../components/expenses/ExpenseModal';
+import { PageHeader } from '../components/layout/PageHeader';
+import { InlineError, LoadingRow } from '../components/ui/Feedback';
+import type { Category, Expense, Shift, ShiftSummary } from '../types/models';
 import {
+  categoryColor,
   computeCategoryBreakdown,
   computeTrend,
   daysElapsed,
+  expensesBetween,
   formatCurrency,
+  formatRangeLabel,
+  formatShortDate,
   getPeriodRange,
+  getPreviousRange,
+  parseLocalDate,
+  shiftsBetween,
+  sumAmounts,
   toDateParam,
+  trendStart,
   type Period,
 } from '../utils/dashboardStats';
+import { usePayPeriod } from '../utils/usePayPeriod';
 
-const PERIOD_LABELS: Record<Period, string> = {
-  week: 'week to date',
-  month: 'month to date',
-  year: 'year to date',
-};
+const PERIODS: Period[] = ['week', 'month', 'year'];
+const PERIOD_NOUN: Record<Period, string> = { week: 'week', month: 'month', year: 'year' };
+
+interface DashboardData {
+  expenses: Expense[];
+  shifts: Shift[];
+  payExpenses: Expense[];
+  paySummary: ShiftSummary;
+}
 
 export function DashboardPage() {
   const [period, setPeriod] = useState<Period>('month');
+  const [payPeriod] = usePayPeriod();
   const [categories, setCategories] = useState<Category[]>([]);
-  const [periodExpenses, setPeriodExpenses] = useState<Expense[]>([]);
-  const [trendExpenses, setTrendExpenses] = useState<Expense[]>([]);
+  const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+  const [addOpen, setAddOpen] = useState(false);
 
   useEffect(() => {
-    getCategories().then(setCategories, () => setError('Failed to load categories'));
+    getCategories().then(setCategories, () => setError('Could not load categories.'));
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
     const now = new Date();
-    const trendStart = new Date(now.getFullYear(), now.getMonth() - 5, 1);
-    getExpenses({ start_date: toDateParam(trendStart), end_date: toDateParam(now) }).then(
-      setTrendExpenses,
-      () => setError('Failed to load spending trend'),
-    );
-  }, []);
+    const current = getPeriodRange(period, now);
+    const previous = getPreviousRange(period, current);
+    const from = [trendStart(period, now), previous.start, current.start].reduce((a, b) => (a < b ? a : b));
+    const wide = { start_date: toDateParam(from), end_date: toDateParam(now) };
+    const pay = { start_date: payPeriod.start, end_date: payPeriod.end };
 
-  useEffect(() => {
-    const { start, end } = getPeriodRange(period);
     // eslint-disable-next-line react-hooks/set-state-in-effect -- show a loading state while refetching after a period change
     setLoading(true);
-    getExpenses({ start_date: toDateParam(start), end_date: toDateParam(end) })
-      .then(setPeriodExpenses, () => setError('Failed to load expenses'))
-      .finally(() => setLoading(false));
-  }, [period]);
+    setError(null);
+    Promise.all([getExpenses(wide), getShifts(wide), getExpenses(pay), getShiftSummary(pay)])
+      .then(([expenses, shifts, payExpenses, paySummary]) => {
+        if (!cancelled) setData({ expenses, shifts, payExpenses, paySummary });
+      })
+      .catch(() => {
+        if (!cancelled) setError('Could not load your dashboard. Please try again.');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
 
-  const { start, end } = getPeriodRange(period);
-  const totalSpent = periodExpenses.reduce((sum, e) => sum + parseFloat(e.amount), 0);
-  const elapsed = daysElapsed(start, end);
-  const dailyAvg = totalSpent / elapsed;
-  const breakdown = computeCategoryBreakdown(periodExpenses, categories);
-  const topCategory = breakdown[0];
-  const trend = computeTrend(trendExpenses);
+    return () => {
+      cancelled = true;
+    };
+  }, [period, payPeriod.start, payPeriod.end, reloadKey]);
+
+  const handleSaved = useCallback(() => {
+    setAddOpen(false);
+    setReloadKey((k) => k + 1);
+  }, []);
+
+  const range = getPeriodRange(period);
+  const noun = PERIOD_NOUN[period];
+
+  const actions = (
+    <>
+      <div className="seg" role="radiogroup" aria-label="Period">
+        {PERIODS.map((p) => (
+          <label className="seg-opt" key={p}>
+            <input type="radio" name="period" checked={period === p} onChange={() => setPeriod(p)} />
+            {p[0].toUpperCase() + p.slice(1)}
+          </label>
+        ))}
+      </div>
+      <button type="button" className="btn btn-primary" onClick={() => setAddOpen(true)}>
+        <Plus size={15} aria-hidden="true" />
+        Add expense
+      </button>
+    </>
+  );
 
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        position: 'relative',
-        overflow: 'hidden',
-        background:
-          'radial-gradient(ellipse 900px 500px at 20% 0%, color-mix(in srgb, var(--color-accent) 22%, transparent), transparent 70%), var(--color-bg)',
-      }}
-    >
-      <div
-        style={{
-          position: 'absolute',
-          left: -160,
-          bottom: -160,
-          width: 340,
-          height: 340,
-          borderRadius: '50%',
-          border: '1px solid color-mix(in srgb, var(--color-accent) 45%, transparent)',
-          pointerEvents: 'none',
-        }}
+    <>
+      <PageHeader
+        title="Dashboard"
+        subtitle={`${formatRangeLabel(range.start, range.end)} · ${noun} to date`}
+        actions={actions}
       />
-      <div
-        style={{
-          position: 'absolute',
-          left: -90,
-          bottom: -90,
-          width: 200,
-          height: 200,
-          borderRadius: '50%',
-          border: '1px solid var(--color-divider)',
-          pointerEvents: 'none',
-        }}
-      />
+      <div className="page-body">
+        {error && <InlineError message={error} />}
+        {loading && !data ? (
+          <div className="panel"><LoadingRow /></div>
+        ) : data ? (
+          <DashboardBody
+            period={period}
+            data={data}
+            categories={categories}
+            payStart={payPeriod.start}
+            payEnd={payPeriod.end}
+            dimmed={loading}
+          />
+        ) : null}
+      </div>
+      {addOpen && (
+        <ExpenseModal initialExpense={null} categories={categories} onClose={() => setAddOpen(false)} onSaved={handleSaved} />
+      )}
+    </>
+  );
+}
 
-      <Nav />
-      <div style={{ position: 'relative', zIndex: 1, maxWidth: 1200, margin: '0 auto', padding: 'var(--space-8) var(--space-6)' }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-4)', alignItems: 'flex-end', justifyContent: 'space-between' }}>
-          <div>
-            <h1 style={{ marginBottom: 2 }}>Dashboard</h1>
-            <div className="text-muted">{PERIOD_LABELS[period]}</div>
-          </div>
-          <div className="seg">
-            {(['week', 'month', 'year'] as Period[]).map((p) => (
-              <label className="seg-opt" key={p}>
-                <input type="radio" name="period" checked={period === p} onChange={() => setPeriod(p)} />
-                {p[0].toUpperCase() + p.slice(1)}
-              </label>
-            ))}
+interface BodyProps {
+  period: Period;
+  data: DashboardData;
+  categories: Category[];
+  payStart: string;
+  payEnd: string;
+  dimmed: boolean;
+}
+
+function DashboardBody({ period, data, categories, payStart, payEnd, dimmed }: BodyProps) {
+  const now = new Date();
+  const current = getPeriodRange(period, now);
+  const previous = getPreviousRange(period, current);
+  const noun = PERIOD_NOUN[period];
+
+  const periodExpenses = expensesBetween(data.expenses, current);
+  const previousExpenses = expensesBetween(data.expenses, previous);
+  const periodShifts = shiftsBetween(data.shifts, current);
+
+  const spent = sumAmounts(periodExpenses);
+  const prevSpent = sumAmounts(previousExpenses);
+  const delta = spent - prevSpent;
+  const elapsed = daysElapsed(current.start, current.end);
+
+  const income = periodShifts.reduce((sum, s) => sum + parseFloat(s.estimated_pay), 0);
+  const hours = periodShifts.reduce((sum, s) => sum + parseFloat(s.paid_hours), 0);
+
+  const breakdown = computeCategoryBreakdown(periodExpenses, categories);
+  const trend = computeTrend(period, data.expenses, data.shifts, now);
+  const recent = [...data.expenses]
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    .slice(0, 5);
+
+  const payGross = parseFloat(data.paySummary.estimated_gross_pay);
+  const paySpent = sumAmounts(data.payExpenses);
+  const payLabel = `${formatRangeLabel(parseLocalDate(payStart), parseLocalDate(payEnd))}`;
+
+  return (
+    <div style={{ display: 'contents', opacity: dimmed ? 0.6 : 1 }}>
+      <div className="figure-grid">
+        <div className="panel figure">
+          <div className="figure-label">Spent this {noun}</div>
+          <div className="figure-value">{formatCurrency(spent)}</div>
+          <div className="figure-meta">
+            {delta >= 0 ? '+' : '−'}{formatCurrency(Math.abs(delta))} vs last {noun}
           </div>
         </div>
+        <div className="panel figure">
+          <div className="figure-label">Daily average</div>
+          <div className="figure-value">{formatCurrency(spent / elapsed)}</div>
+          <div className="figure-meta">over {elapsed} {elapsed === 1 ? 'day' : 'days'} this {noun}</div>
+        </div>
+        <div className="panel figure">
+          <div className="figure-label">Estimated shift income</div>
+          <div className="figure-value">{formatCurrency(income)}</div>
+          <div className="figure-meta">
+            {periodShifts.length} {periodShifts.length === 1 ? 'shift' : 'shifts'} · {hours.toFixed(2)} paid hours
+          </div>
+        </div>
+      </div>
 
-        <hr className="hr" />
-
-        {error && <p style={{ color: 'var(--color-accent)' }}>{error}</p>}
-
-        {loading ? (
-          <p className="text-muted">Loading...</p>
-        ) : (
-          <>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 'var(--space-4)' }}>
-              <div className="card elev-sm">
-                <div className="card-kicker">Total spent</div>
-                <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 36 }}>
-                  {formatCurrency(totalSpent)}
-                </div>
-                <div className="card-meta">{elapsed} days elapsed</div>
-              </div>
-              <div className="card elev-sm">
-                <div className="card-kicker">Daily average</div>
-                <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 36 }}>
-                  {formatCurrency(dailyAvg)}
-                </div>
-                <div className="card-meta">across all categories</div>
-              </div>
-              <div className="card elev-sm">
-                <div className="card-kicker">Top category</div>
-                <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 36 }}>
-                  {topCategory ? topCategory.name : '—'}
-                </div>
-                <div className="card-meta">
-                  {topCategory ? `${topCategory.amountFormatted} this ${period}` : 'No expenses yet'}
-                </div>
-              </div>
+      <div className="split">
+        <div className="panel">
+          <div className="panel-head">
+            <div>
+              <div className="panel-title">Spending trend</div>
+              <div className="panel-sub">{trend.caption}</div>
             </div>
+            <div className="chart-legend">
+              <span className="legend-item"><span className="legend-line" /> Spending</span>
+              <span className="legend-item"><span className="legend-line legend-line-dashed" /> Shift income</span>
+            </div>
+          </div>
+          <TrendChart trend={trend} />
+        </div>
 
-            <hr className="hr" />
-
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-6)' }}>
-              <div className="card elev-sm" style={{ flex: '2 1 480px', minWidth: 0 }}>
-                <h4 style={{ marginBottom: 'var(--space-4)' }}>Spending trend</h4>
-                <svg viewBox="0 0 560 200" style={{ width: '100%', height: 'auto', display: 'block' }}>
-                  <line x1="0" y1="160" x2="560" y2="160" stroke="var(--color-divider)" strokeWidth={1} />
-                  <polygon points={trend.areaPoints} fill="var(--color-accent-100)" />
-                  <polyline points={trend.linePoints} fill="none" stroke="var(--color-accent)" strokeWidth={2.5} />
-                  {trend.points.map((pt, i) => (
-                    <circle key={i} cx={pt.x} cy={pt.y} r={3.5} fill="var(--color-accent)" />
-                  ))}
-                </svg>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'color-mix(in srgb, var(--color-text) 55%, transparent)', marginTop: 'var(--space-1)' }}>
-                  {trend.months.map((m, i) => (
-                    <span key={i}>{m.label}</span>
-                  ))}
-                </div>
-              </div>
-
-              <div className="card elev-sm" style={{ flex: '1 1 280px', minWidth: 0 }}>
-                <h4 style={{ marginBottom: 'var(--space-4)' }}>By category</h4>
-                {breakdown.length === 0 ? (
-                  <p className="text-muted">No expenses in this period.</p>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-                    {breakdown.map((cat) => (
-                      <div key={cat.id}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}>
-                          <span>{cat.name}</span>
-                          <span className="text-muted">{cat.amountFormatted}</span>
-                        </div>
-                        <div style={{ height: 6, background: 'var(--color-neutral-200)' }}>
-                          <div style={{ height: '100%', background: 'var(--color-accent)', width: cat.pctStyle }} />
-                        </div>
-                      </div>
-                    ))}
+        <div className="panel panel-pad">
+          <div className="panel-title" style={{ marginBottom: 'var(--space-4)' }}>Spending by category</div>
+          {breakdown.length === 0 ? (
+            <p className="empty-body">No expenses this {noun}.</p>
+          ) : (
+            <div className="cat-list">
+              {breakdown.map((cat) => (
+                <div key={cat.id}>
+                  <div className="cat-line">
+                    <span>{cat.name}</span>
+                    <span>{cat.amountFormatted}</span>
                   </div>
-                )}
-              </div>
+                  <div className="cat-track">
+                    <div className="cat-fill" style={{ width: cat.pct, background: cat.color }} />
+                  </div>
+                </div>
+              ))}
             </div>
-          </>
-        )}
+          )}
+          <div className="panel-foot">
+            <span>{breakdown.length} {breakdown.length === 1 ? 'category' : 'categories'}</span>
+            <span className="num">{formatCurrency(spent)} total</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="split">
+        <div className="panel">
+          <div className="panel-head">
+            <div className="panel-title">Recent expenses</div>
+            <Link className="panel-link" to="/expenses">View all</Link>
+          </div>
+          {recent.length === 0 ? (
+            <div className="recent-row"><span className="empty-body">No expenses yet.</span></div>
+          ) : (
+            recent.map((e) => {
+              const cat = categories.find((c) => c.id === e.category);
+              return (
+                <div className="recent-row row-hover" key={e.id}>
+                  <div className="recent-stripe" style={{ background: categoryColor(categories, e.category) }} />
+                  <div className="recent-main">
+                    <div className="recent-desc">{e.description || cat?.name || 'Expense'}</div>
+                    <div className="recent-meta">{cat?.name ?? 'Uncategorised'} · {formatShortDate(new Date(e.date))}</div>
+                  </div>
+                  <div className="recent-amount">{formatCurrency(parseFloat(e.amount))}</div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        <div className="panel panel-pad">
+          <div className="panel-head" style={{ padding: 0, marginBottom: 'var(--space-4)' }}>
+            <div className="panel-title">Pay period</div>
+            <Link className="panel-link" to="/shifts">Change</Link>
+          </div>
+          <div className="panel-sub">Current period</div>
+          <div style={{ fontSize: 14, margin: '4px 0 var(--space-4)' }}>{payLabel}</div>
+          <div className="kv-list">
+            <div className="kv"><span>Shifts logged</span><span>{data.paySummary.total_shifts}</span></div>
+            <div className="kv"><span>Paid hours</span><span>{parseFloat(data.paySummary.total_hours).toFixed(2)}</span></div>
+            <div className="kv kv-strong"><span>Estimated gross</span><span>{formatCurrency(payGross)}</span></div>
+          </div>
+          <div className="panel-foot" style={{ display: 'block' }}>
+            {payGross > 0
+              ? `Spending is ${Math.round((paySpent / payGross) * 100)}% of estimated income this period.`
+              : 'Log shifts in this pay period to compare spending with income.'}
+          </div>
+        </div>
       </div>
     </div>
   );

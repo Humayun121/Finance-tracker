@@ -1,90 +1,62 @@
+import { Plus } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { Nav } from '../components/layout/Nav';
-import { PageBackground } from '../components/layout/PageBackground';
-import { ShiftModal } from '../components/shifts/ShiftModal';
 import { deleteShift, getShiftDefaults, getShifts, getShiftSummary } from '../api/shifts';
+import { PageHeader } from '../components/layout/PageHeader';
+import { ShiftModal } from '../components/shifts/ShiftModal';
+import { InlineError, LoadingRow } from '../components/ui/Feedback';
 import type { Shift, ShiftSummary } from '../types/models';
 import { formatCurrency } from '../utils/dashboardStats';
-import { formatBreakLabel, formatDateLabel } from '../utils/shifts';
+import { formatBreakLabel, formatDateLabel, toTimeInputValue } from '../utils/shifts';
+import { usePayPeriod } from '../utils/usePayPeriod';
 
 const EMPTY_SUMMARY: ShiftSummary = { total_shifts: 0, total_hours: '0.00', estimated_gross_pay: '0.00' };
 
-function defaultRangeStart(): string {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
-}
-
-function defaultRangeEnd(): string {
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, '0');
-  const d = String(now.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
-
-async function loadShiftsAndSummary(start: string, end: string) {
-  const params = {
-    ...(start ? { start_date: start } : {}),
-    ...(end ? { end_date: end } : {}),
-  };
-  return Promise.all([getShifts(params), getShiftSummary(params)]);
-}
-
 export function ShiftsPage() {
-  const [rangeStart, setRangeStart] = useState(defaultRangeStart());
-  const [rangeEnd, setRangeEnd] = useState(defaultRangeEnd());
+  const [payPeriod, setPayPeriod] = usePayPeriod();
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [summary, setSummary] = useState<ShiftSummary>(EMPTY_SUMMARY);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [defaultRate, setDefaultRate] = useState('');
-  const [isModalOpen, setModalOpen] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
   const [modalShift, setModalShift] = useState<Shift | null>(null);
+
+  const { start: rangeStart, end: rangeEnd } = payPeriod;
 
   useEffect(() => {
     let cancelled = false;
+    const params = {
+      ...(rangeStart ? { start_date: rangeStart } : {}),
+      ...(rangeEnd ? { end_date: rangeEnd } : {}),
+    };
 
-    async function run() {
-      setLoading(true);
-      setError(null);
-      try {
-        const [shiftsData, summaryData] = await loadShiftsAndSummary(rangeStart, rangeEnd);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- show a loading state while refetching after a pay period change
+    setLoading(true);
+    setError(null);
+    Promise.all([getShifts(params), getShiftSummary(params)])
+      .then(([shiftsData, summaryData]) => {
         if (cancelled) return;
         setShifts(shiftsData);
         setSummary(summaryData);
-      } catch {
+      })
+      .catch(() => {
         if (!cancelled) setError('Could not load shifts. Please try again.');
-      } finally {
+      })
+      .finally(() => {
         if (!cancelled) setLoading(false);
-      }
-    }
-
-    run();
+      });
 
     return () => {
       cancelled = true;
     };
-  }, [rangeStart, rangeEnd]);
+  }, [rangeStart, rangeEnd, reloadKey]);
 
   useEffect(() => {
     getShiftDefaults()
       .then((data) => setDefaultRate(data.hourly_rate ?? ''))
       .catch(() => {});
   }, []);
-
-  async function refetch() {
-    setLoading(true);
-    setError(null);
-    try {
-      const [shiftsData, summaryData] = await loadShiftsAndSummary(rangeStart, rangeEnd);
-      setShifts(shiftsData);
-      setSummary(summaryData);
-    } catch {
-      setError('Could not load shifts. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  }
 
   function openAddModal() {
     setModalShift(null);
@@ -98,10 +70,8 @@ export function ShiftsPage() {
 
   function handleShiftSaved(saved: Shift, keepOpen: boolean) {
     setDefaultRate(saved.hourly_rate);
-    refetch();
-    if (!keepOpen) {
-      setModalOpen(false);
-    }
+    setReloadKey((k) => k + 1);
+    if (!keepOpen) setModalOpen(false);
   }
 
   async function handleDelete(id: number) {
@@ -109,188 +79,134 @@ export function ShiftsPage() {
 
     try {
       await deleteShift(id);
-      refetch();
+      setReloadKey((k) => k + 1);
     } catch {
       setError('Could not delete shift. Please try again.');
     }
   }
 
-  const hasShifts = shifts.length > 0;
   const rangeLabel =
-    rangeStart && rangeEnd
-      ? `${formatDateLabel(rangeStart)} – ${formatDateLabel(rangeEnd)}`
-      : 'Select a pay period';
+    rangeStart && rangeEnd ? `${formatDateLabel(rangeStart)} – ${formatDateLabel(rangeEnd)}` : 'Select a pay period';
 
   return (
-    <PageBackground>
-      <Nav />
-
-      <div style={{ position: 'relative', zIndex: 1, maxWidth: 1200, margin: '0 auto', padding: 'var(--space-8) var(--space-6)' }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-4)', alignItems: 'flex-end', justifyContent: 'space-between' }}>
-          <div>
-            <h1 style={{ marginBottom: 2 }}>Shifts</h1>
-            <div className="text-muted">Log your shifts and estimate gross pay for any pay period.</div>
-          </div>
+    <>
+      <PageHeader
+        title="Shifts"
+        subtitle="Log your shifts and estimate gross pay for any pay period."
+        actions={
           <button type="button" className="btn btn-primary" onClick={openAddModal}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+            <Plus size={15} aria-hidden="true" />
             Add shift
           </button>
+        }
+      />
+      <div className="page-body">
+        <div className="panel filter-bar">
+          <div className="field filter">
+            <label htmlFor="s-from">Pay period start</label>
+            <input
+              className="input"
+              id="s-from"
+              type="date"
+              value={rangeStart}
+              max={rangeEnd || undefined}
+              onChange={(e) => setPayPeriod({ ...payPeriod, start: e.target.value })}
+            />
+          </div>
+          <div className="field filter">
+            <label htmlFor="s-to">Pay period end</label>
+            <input
+              className="input"
+              id="s-to"
+              type="date"
+              value={rangeEnd}
+              min={rangeStart || undefined}
+              onChange={(e) => setPayPeriod({ ...payPeriod, end: e.target.value })}
+            />
+          </div>
+          <div className="filter-summary">{rangeLabel}</div>
         </div>
 
-        <hr className="hr" />
-
-        <div className="card elev-sm">
-          <div className="card-kicker">Pay period</div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-4)', alignItems: 'flex-end' }}>
-            <div className="field pay-period-field" style={{ margin: 0 }}>
-              <label htmlFor="range-start">Start date</label>
-              <input
-                className="input"
-                id="range-start"
-                type="date"
-                value={rangeStart}
-                onChange={(event) => setRangeStart(event.target.value)}
-              />
-            </div>
-            <div className="field pay-period-field" style={{ margin: 0 }}>
-              <label htmlFor="range-end">End date</label>
-              <input
-                className="input"
-                id="range-end"
-                type="date"
-                value={rangeEnd}
-                onChange={(event) => setRangeEnd(event.target.value)}
-              />
-            </div>
-            <div className="pay-period-range">
-              <div className="text-muted" style={{ fontSize: 13 }}>{rangeLabel}</div>
-            </div>
+        <div className="figure-grid">
+          <div className="panel figure">
+            <div className="figure-label">Estimated gross pay</div>
+            <div className="figure-value">{formatCurrency(parseFloat(summary.estimated_gross_pay))}</div>
+            <div className="figure-meta">before tax and deductions</div>
           </div>
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 'var(--space-4)', marginTop: 'var(--space-4)' }}>
-          <div className="card elev-sm">
-            <div className="card-kicker">Estimated gross pay</div>
-            <div className="summary-value">{formatCurrency(parseFloat(summary.estimated_gross_pay))}</div>
-            <div className="card-meta">before tax and deductions</div>
+          <div className="panel figure">
+            <div className="figure-label">Total paid hours</div>
+            <div className="figure-value">{parseFloat(summary.total_hours).toFixed(2)}</div>
+            <div className="figure-meta">breaks excluded</div>
           </div>
-          <div className="card elev-sm">
-            <div className="card-kicker">Total paid hours</div>
-            <div className="summary-value">{parseFloat(summary.total_hours).toFixed(2)}</div>
-            <div className="card-meta">breaks excluded</div>
-          </div>
-          <div className="card elev-sm">
-            <div className="card-kicker">Shifts</div>
-            <div className="summary-value">{summary.total_shifts}</div>
-            <div className="card-meta">in selected period</div>
+          <div className="panel figure">
+            <div className="figure-label">Shifts</div>
+            <div className="figure-value">{summary.total_shifts}</div>
+            <div className="figure-meta">in selected period</div>
           </div>
         </div>
 
-        <hr className="hr" />
-
-        {error && (
-          <div style={{ color: 'var(--color-accent)', fontSize: 13, marginBottom: 'var(--space-3)' }}>{error}</div>
-        )}
+        {error && <InlineError message={error} />}
 
         {loading ? (
-          <div className="text-muted" style={{ padding: 'var(--space-4) 0' }}>Loading…</div>
-        ) : hasShifts ? (
-          <>
-            <div className="shift-table-wrap">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Start</th>
-                    <th>End</th>
-                    <th style={{ textAlign: 'right' }}>Break</th>
-                    <th style={{ textAlign: 'right' }}>Paid hours</th>
-                    <th style={{ textAlign: 'right' }}>Rate</th>
-                    <th style={{ textAlign: 'right' }}>Est. pay</th>
-                    <th style={{ textAlign: 'right' }}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {shifts.map((shift) => (
-                    <tr key={shift.id}>
-                      <td style={{ whiteSpace: 'nowrap' }}>{formatDateLabel(shift.date)}</td>
-                      <td>{shift.start_time.slice(0, 5)}</td>
-                      <td>{shift.end_time.slice(0, 5)}</td>
-                      <td className="num">{formatBreakLabel(shift.break_minutes)}</td>
-                      <td className="num">{parseFloat(shift.paid_hours).toFixed(2)}</td>
-                      <td className="num">{formatCurrency(parseFloat(shift.hourly_rate))}</td>
-                      <td className="num" style={{ fontWeight: 700 }}>{formatCurrency(parseFloat(shift.estimated_pay))}</td>
-                      <td>
-                        <div style={{ display: 'flex', gap: 'var(--space-2)', justifyContent: 'flex-end' }}>
-                          <button type="button" className="btn btn-ghost" style={{ padding: '4px 8px' }} onClick={() => openEditModal(shift)}>
-                            Edit
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-ghost"
-                            style={{ padding: '4px 8px', color: 'var(--color-accent-700)' }}
-                            onClick={() => handleDelete(shift.id)}
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          <div className="panel"><LoadingRow /></div>
+        ) : shifts.length === 0 ? (
+          <div className="panel panel-pad">
+            <div className="empty-title">No shifts in this period</div>
+            <p className="empty-body">Add a shift, or widen the pay period above to see shifts you have already logged.</p>
+          </div>
+        ) : (
+          <div className="panel">
+            <div className="table-scroll">
+              <div className="grid-row grid-head shift-cols">
+                <span>Date</span>
+                <span>Start</span>
+                <span>End</span>
+                <span className="cell-right">Break</span>
+                <span className="cell-right">Paid hours</span>
+                <span className="cell-right">Rate</span>
+                <span className="cell-right">Est. pay</span>
+                <span className="cell-right">Actions</span>
+              </div>
+              {shifts.map((s) => (
+                <div className="grid-row row-hover shift-cols" key={s.id}>
+                  <span style={{ whiteSpace: 'nowrap' }}>{formatDateLabel(s.date)}</span>
+                  <span className="cell-muted">{toTimeInputValue(s.start_time)}</span>
+                  <span className="cell-muted">{toTimeInputValue(s.end_time)}</span>
+                  <span className="cell-right cell-muted">{formatBreakLabel(s.break_minutes)}</span>
+                  <span className="cell-right">{parseFloat(s.paid_hours).toFixed(2)}</span>
+                  <span className="cell-right cell-muted">{formatCurrency(parseFloat(s.hourly_rate))}</span>
+                  <span className="cell-right cell-strong">{formatCurrency(parseFloat(s.estimated_pay))}</span>
+                  <span className="cell-actions">
+                    <button type="button" className="btn btn-ghost" onClick={() => openEditModal(s)}>Edit</button>
+                    <button type="button" className="btn btn-ghost btn-danger" onClick={() => handleDelete(s.id)}>Delete</button>
+                  </span>
+                </div>
+              ))}
             </div>
 
-            <div className="shift-cards">
-              {shifts.map((shift) => (
-                <div key={shift.id} className="shift-card">
-                  <div className="shift-card-header">{formatDateLabel(shift.date)}</div>
-                  <div className="shift-card-meta">
-                    {shift.start_time.slice(0, 5)} – {shift.end_time.slice(0, 5)} · {formatBreakLabel(shift.break_minutes)} break
+            <div className="stack-cards">
+              {shifts.map((s) => (
+                <div className="stack-card" key={s.id}>
+                  <div className="stack-card-top">
+                    <div className="stack-card-title">{formatDateLabel(s.date)}</div>
+                    <div className="stack-card-money">{formatCurrency(parseFloat(s.estimated_pay))}</div>
                   </div>
-                  <div className="shift-card-values">
-                    <div>
-                      <div className="shift-card-value-label">Paid hours</div>
-                      <div className="shift-card-value">{parseFloat(shift.paid_hours).toFixed(2)}</div>
-                    </div>
-                    <div>
-                      <div className="shift-card-value-label">Rate</div>
-                      <div className="shift-card-value">{formatCurrency(parseFloat(shift.hourly_rate))}</div>
-                    </div>
-                    <div>
-                      <div className="shift-card-value-label">Est. pay</div>
-                      <div className="shift-card-value">{formatCurrency(parseFloat(shift.estimated_pay))}</div>
-                    </div>
+                  <div className="stack-card-meta">
+                    {toTimeInputValue(s.start_time)} – {toTimeInputValue(s.end_time)} · {formatBreakLabel(s.break_minutes)} break ·{' '}
+                    {parseFloat(s.paid_hours).toFixed(2)} h · {formatCurrency(parseFloat(s.hourly_rate))}/h
                   </div>
-                  <div className="shift-card-actions">
-                    <button type="button" className="btn btn-secondary" onClick={() => openEditModal(shift)}>
-                      Edit
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-secondary"
-                      style={{ color: 'var(--color-accent-700)' }}
-                      onClick={() => handleDelete(shift.id)}
-                    >
-                      Delete
-                    </button>
+                  <div className="stack-card-actions">
+                    <button type="button" className="btn btn-ghost" onClick={() => openEditModal(s)}>Edit</button>
+                    <button type="button" className="btn btn-ghost btn-danger" onClick={() => handleDelete(s.id)}>Delete</button>
                   </div>
                 </div>
               ))}
             </div>
-          </>
-        ) : (
-          <div className="card elev-sm" style={{ padding: 'var(--space-8) var(--space-6)' }}>
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: 'var(--space-3)' }}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-            <h4 style={{ marginBottom: 'var(--space-1)' }}>No shifts in this period</h4>
-            <p className="text-muted" style={{ margin: 0, maxWidth: '46ch' }}>
-              Add a shift, or widen the pay period above to see shifts you have already logged.
-            </p>
           </div>
         )}
       </div>
 
-      {isModalOpen && (
+      {modalOpen && (
         <ShiftModal
           key={modalShift ? modalShift.id : 'new'}
           initialShift={modalShift}
@@ -299,6 +215,6 @@ export function ShiftsPage() {
           onSaved={handleShiftSaved}
         />
       )}
-    </PageBackground>
+    </>
   );
 }

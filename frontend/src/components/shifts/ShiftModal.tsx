@@ -1,8 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
 import { createShift, updateShift } from '../../api/shifts';
 import type { CreateShift, Shift } from '../../types/models';
 import { formatCurrency } from '../../utils/dashboardStats';
 import { computePaidHours, toTimeInputValue } from '../../utils/shifts';
+import { InlineError } from '../ui/Feedback';
+import { useEscapeToClose } from '../ui/useDialog';
 
 interface ShiftModalProps {
   initialShift: Shift | null;
@@ -11,38 +13,30 @@ interface ShiftModalProps {
   onSaved: (saved: Shift, keepOpen: boolean) => void;
 }
 
+/** One modal for both adding and editing a shift. */
 export function ShiftModal({ initialShift, defaultHourlyRate, onClose, onSaved }: ShiftModalProps) {
   const [editingShift, setEditingShift] = useState<Shift | null>(initialShift);
   const [date, setDate] = useState(initialShift?.date ?? '');
-  const [startTime, setStartTime] = useState(
-    initialShift ? toTimeInputValue(initialShift.start_time) : '09:00'
-  );
-  const [endTime, setEndTime] = useState(
-    initialShift ? toTimeInputValue(initialShift.end_time) : '17:00'
-  );
+  const [startTime, setStartTime] = useState(initialShift ? toTimeInputValue(initialShift.start_time) : '09:00');
+  const [endTime, setEndTime] = useState(initialShift ? toTimeInputValue(initialShift.end_time) : '17:00');
   const [breakMinutes, setBreakMinutes] = useState(String(initialShift?.break_minutes ?? 30));
   const [hourlyRate, setHourlyRate] = useState(initialShift?.hourly_rate ?? defaultHourlyRate ?? '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
   const dateInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') onClose();
-    }
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
+  useEscapeToClose(onClose);
 
+  // Client-side preview only; the saved values are calculated by the server.
   const previewHours = computePaidHours(startTime, endTime, Number(breakMinutes) || 0);
   const previewPay = previewHours * (Number(hourlyRate) || 0);
 
   const isEditing = editingShift !== null;
-  const canSave = date.trim().length > 0 && !saving;
+  const showRateHint = !isEditing && defaultHourlyRate !== '' && hourlyRate === defaultHourlyRate;
+  const canSave = date !== '' && startTime !== '' && endTime !== '' && hourlyRate !== '' && !saving;
 
-  async function handleSubmit(keepOpen: boolean) {
-    if (!date) return;
+  async function save(keepOpen: boolean) {
+    if (!canSave) return;
 
     setSaving(true);
     setError(null);
@@ -56,13 +50,11 @@ export function ShiftModal({ initialShift, defaultHourlyRate, onClose, onSaved }
     };
 
     try {
-      const saved = editingShift
-        ? await updateShift(editingShift.id, payload)
-        : await createShift(payload);
-
+      const saved = editingShift ? await updateShift(editingShift.id, payload) : await createShift(payload);
       onSaved(saved, keepOpen);
 
       if (keepOpen) {
+        // Clear only the date and put the cursor back there for the next entry.
         setEditingShift(null);
         setDate('');
         dateInputRef.current?.focus();
@@ -74,6 +66,11 @@ export function ShiftModal({ initialShift, defaultHourlyRate, onClose, onSaved }
     }
   }
 
+  function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    save(false);
+  }
+
   return (
     <div
       className="dialog-backdrop"
@@ -81,12 +78,10 @@ export function ShiftModal({ initialShift, defaultHourlyRate, onClose, onSaved }
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <div className="dialog elev-lg" role="dialog" aria-modal="true" aria-labelledby="shift-modal-title">
-        <div className="dialog-title">
-          <span id="shift-modal-title">{isEditing ? 'Edit shift' : 'Add shift'}</span>
-          <button type="button" className="btn btn-ghost" style={{ padding: '4px 8px' }} onClick={onClose}>
-            Close
-          </button>
+      <form className="dialog" role="dialog" aria-modal="true" aria-labelledby="shift-modal-title" onSubmit={handleSubmit}>
+        <div className="dialog-head">
+          <div className="dialog-title" id="shift-modal-title">{isEditing ? 'Edit shift' : 'Add shift'}</div>
+          <button type="button" className="btn btn-ghost" onClick={onClose}>Close</button>
         </div>
 
         <div className="dialog-body">
@@ -97,31 +92,23 @@ export function ShiftModal({ initialShift, defaultHourlyRate, onClose, onSaved }
               className="input"
               id="shift-date"
               type="date"
+              autoFocus
               value={date}
-              onChange={(event) => setDate(event.target.value)}
+              onChange={(e) => setDate(e.target.value)}
             />
           </div>
 
           <div className="field-row">
             <div className="field field-pair">
               <label htmlFor="shift-start">Start time</label>
-              <input
-                className="input"
-                id="shift-start"
-                type="time"
-                value={startTime}
-                onChange={(event) => setStartTime(event.target.value)}
-              />
+              <input className="input" id="shift-start" type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
             </div>
             <div className="field field-pair">
               <label htmlFor="shift-end">End time</label>
-              <input
-                className="input"
-                id="shift-end"
-                type="time"
-                value={endTime}
-                onChange={(event) => setEndTime(event.target.value)}
-              />
+              <input className="input" id="shift-end" type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+              {endTime !== '' && startTime !== '' && endTime < startTime && (
+                <div className="field-hint">Ends after midnight (overnight shift)</div>
+              )}
             </div>
           </div>
 
@@ -136,7 +123,7 @@ export function ShiftModal({ initialShift, defaultHourlyRate, onClose, onSaved }
                 step="5"
                 inputMode="numeric"
                 value={breakMinutes}
-                onChange={(event) => setBreakMinutes(event.target.value)}
+                onChange={(e) => setBreakMinutes(e.target.value)}
               />
             </div>
             <div className="field field-pair">
@@ -149,67 +136,35 @@ export function ShiftModal({ initialShift, defaultHourlyRate, onClose, onSaved }
                 step="0.01"
                 inputMode="decimal"
                 value={hourlyRate}
-                onChange={(event) => setHourlyRate(event.target.value)}
+                onChange={(e) => setHourlyRate(e.target.value)}
               />
-              <div className="text-muted" style={{ fontSize: 11, marginTop: 4 }}>
-                Pre-filled from your last shift
-              </div>
+              {showRateHint && <div className="field-hint">Pre-filled from your last shift</div>}
             </div>
           </div>
 
-          <div
-            style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: 'var(--space-6)',
-              borderTop: '2px solid var(--color-divider)',
-              marginTop: 'var(--space-4)',
-              paddingTop: 'var(--space-4)',
-            }}
-          >
+          <div className="calc-box">
             <div>
-              <div className="card-kicker">Paid hours</div>
-              <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 24 }}>
-                {previewHours.toFixed(2)}
-              </div>
+              <div className="calc-label">Paid hours</div>
+              <div className="calc-value" aria-live="polite">{previewHours.toFixed(2)}</div>
             </div>
             <div>
-              <div className="card-kicker">Estimated pay</div>
-              <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 24 }}>
-                {formatCurrency(previewPay)}
-              </div>
+              <div className="calc-label">Estimated pay</div>
+              <div className="calc-value" aria-live="polite">{formatCurrency(previewPay)}</div>
             </div>
-            <div className="text-muted" style={{ alignSelf: 'flex-end', fontSize: 11 }}>
-              Calculated automatically
-            </div>
+            <div className="calc-note">Calculated automatically</div>
           </div>
-
-          {error && (
-            <div className="text-muted" style={{ color: 'var(--color-accent)', fontSize: 13, marginTop: 'var(--space-3)' }}>
-              {error}
-            </div>
-          )}
         </div>
 
+        {error && <div className="dialog-error"><InlineError message={error} /></div>}
         <div className="dialog-actions">
-          <button
-            type="button"
-            className="btn btn-secondary"
-            disabled={!canSave}
-            onClick={() => handleSubmit(true)}
-          >
+          <button type="button" className="btn btn-secondary" disabled={!canSave} onClick={() => save(true)}>
             Save &amp; add another
           </button>
-          <button
-            type="button"
-            className="btn btn-primary"
-            disabled={!canSave}
-            onClick={() => handleSubmit(false)}
-          >
+          <button type="submit" className="btn btn-primary" disabled={!canSave}>
             {isEditing ? 'Save changes' : 'Save shift'}
           </button>
         </div>
-      </div>
+      </form>
     </div>
   );
 }

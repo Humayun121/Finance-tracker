@@ -45,9 +45,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
   }, []);
 
-  async function login(username: string, password: string) {
+  async function login(username: string, password: string, remember = true) {
     const { access, refresh } = await loginRequest(username, password);
-    setTokens(access, refresh);
+    setTokens(access, refresh, remember);
     setIsAuthenticated(true);
   }
 
