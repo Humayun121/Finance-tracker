@@ -1,231 +1,191 @@
-import { Nav } from '../components/layout/Nav';
-import type { Expense, Category } from '../types/models';
+import { Plus } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { getCategories } from '../api/categories';
-import { getExpenses, createExpense , deleteExpense } from '../api/expenses';
-import { formatCurrency } from '../utils/dashboardStats';
+import { deleteExpense, getExpenses } from '../api/expenses';
+import { ExpenseModal } from '../components/expenses/ExpenseModal';
+import { PageHeader } from '../components/layout/PageHeader';
+import { InlineError, LoadingRow } from '../components/ui/Feedback';
+import type { Category, Expense } from '../types/models';
+import { formatCurrency, formatShortDate, sumAmounts, toDateParam } from '../utils/dashboardStats';
 
+function formatExpenseDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+}
 
 export function ExpensesPage() {
-  const [expenses, setExpenses] = useState<Expense[]> ([]);
+  const now = new Date();
+  const [from, setFrom] = useState(toDateParam(new Date(now.getFullYear(), now.getMonth(), 1)));
+  const [to, setTo] = useState(toDateParam(now));
+  const [categoryFilter, setCategoryFilter] = useState('');
   const [categories, setCategories] = useState<Category[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState('');
-  const [amount, setAmount] = useState('');
-  const [description, setDescription] = useState('');
-  const [date, setDate] = useState('');
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<Expense | null>(null);
 
   useEffect(() => {
-    async function fetchExpenses() {
-      const data = await getExpenses();
-      setExpenses(data);
-    }
-
-    async function fetchCategories() {
-      const data = await getCategories();
-      setCategories(data);
-    }
-
-    fetchExpenses();
-    fetchCategories();
+    getCategories().then(setCategories, () => setError('Could not load categories.'));
   }, []);
 
-  async function handleAddExpense() {
-    if (!amount || !selectedCategory || !description.trim() || !date) {
-      return;
+  useEffect(() => {
+    let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- show a loading state while refetching after a filter change
+    setLoading(true);
+    setError(null);
+    getExpenses({
+      ...(from ? { start_date: from } : {}),
+      ...(to ? { end_date: to } : {}),
+      ...(categoryFilter ? { category: Number(categoryFilter) } : {}),
+    })
+      .then((data) => {
+        if (!cancelled) setExpenses(data);
+      })
+      .catch(() => {
+        if (!cancelled) setError('Could not load expenses. Please try again.');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [from, to, categoryFilter, reloadKey]);
+
+  function openAdd() {
+    setEditing(null);
+    setModalOpen(true);
+  }
+
+  function openEdit(expense: Expense) {
+    setEditing(expense);
+    setModalOpen(true);
+  }
+
+  function handleSaved() {
+    setModalOpen(false);
+    setReloadKey((k) => k + 1);
+  }
+
+  async function handleDelete(expense: Expense) {
+    if (!window.confirm(`Delete "${expense.description || 'this expense'}"?`)) return;
+    try {
+      await deleteExpense(expense.id);
+      setReloadKey((k) => k + 1);
+    } catch {
+      setError('Could not delete expense. Please try again.');
     }
-
-    const createdExpense = await createExpense({
-      amount,
-      category: Number(selectedCategory),
-      description,
-      date,
-    });
-
-    setExpenses([...expenses, createdExpense]);
-    setAmount('');
-    setSelectedCategory('');
-    setDescription('');
-    setDate('');
   }
 
-  async function handleDeleteExpense(id: number) {
-    await deleteExpense(id);
-
-    setExpenses(
-      expenses.filter((expense) => expense.id !== id)
-    );
-  }
-
-  const hasExpenses = expenses.length > 0;
-  const countLabel = expenses.length === 1 ? '1 expense' : `${expenses.length} expenses`;
+  const sorted = [...expenses].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  const total = sumAmounts(sorted);
+  const countLabel = sorted.length === 1 ? '1 expense' : `${sorted.length} expenses`;
+  const categoryName = (id: number) => categories.find((c) => c.id === id)?.name ?? 'Uncategorised';
 
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        position: 'relative',
-        overflow: 'hidden',
-        background:
-          'radial-gradient(ellipse 900px 500px at 20% 0%, color-mix(in srgb, var(--color-accent) 22%, transparent), transparent 70%), var(--color-bg)',
-      }}
-    >
-      <div
-        style={{
-          position: 'absolute',
-          left: -160,
-          bottom: -160,
-          width: 340,
-          height: 340,
-          borderRadius: '50%',
-          border: '1px solid color-mix(in srgb, var(--color-accent) 45%, transparent)',
-          pointerEvents: 'none',
-        }}
+    <>
+      <PageHeader
+        title="Expenses"
+        subtitle="Everything you have logged, filterable by date and category."
+        actions={
+          <button type="button" className="btn btn-primary" onClick={openAdd}>
+            <Plus size={15} aria-hidden="true" />
+            Add expense
+          </button>
+        }
       />
-      <div
-        style={{
-          position: 'absolute',
-          left: -90,
-          bottom: -90,
-          width: 200,
-          height: 200,
-          borderRadius: '50%',
-          border: '1px solid var(--color-divider)',
-          pointerEvents: 'none',
-        }}
-      />
-
-      <Nav />
-
-      <div style={{ position: 'relative', zIndex: 1, maxWidth: 760, margin: '0 auto', padding: 'var(--space-8) var(--space-6)' }}>
-        <h1 style={{ marginBottom: 2 }}>Expenses</h1>
-        <div className="text-muted">Track and manage your spending.</div>
-
-        <hr className="hr" />
-
-        <div className="card elev-sm">
-          <form
-            style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-3)', alignItems: 'flex-end' }}
-            onSubmit={(event) => {
-              event.preventDefault();
-              handleAddExpense();
-            }}
-          >
-            <div className="field" style={{ flex: '1 1 160px', minWidth: 0, margin: 0 }}>
-              <label htmlFor="expense-category">Category</label>
-              <select
-                className="input"
-                id="expense-category"
-                value={selectedCategory}
-                onChange={(event) => setSelectedCategory(event.target.value)}
-              >
-                <option value="">Select a category</option>
-                {categories.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="field" style={{ flex: '1 1 110px', minWidth: 0, margin: 0 }}>
-              <label htmlFor="expense-amount">Amount</label>
-              <input
-                className="input"
-                id="expense-amount"
-                type="number"
-                step="0.01"
-                placeholder="0.00"
-                value={amount}
-                onChange={(event) => setAmount(event.target.value)}
-              />
-            </div>
-
-            <div className="field" style={{ flex: '2 1 200px', minWidth: 0, margin: 0 }}>
-              <label htmlFor="expense-description">Description</label>
-              <input
-                className="input"
-                id="expense-description"
-                type="text"
-                placeholder="e.g. Weekly shop"
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-              />
-            </div>
-
-            <div className="field" style={{ flex: '1 1 150px', minWidth: 0, margin: 0 }}>
-              <label htmlFor="expense-date">Date</label>
-              <input
-                className="input"
-                id="expense-date"
-                type="date"
-                value={date}
-                onChange={(event) => setDate(event.target.value)}
-              />
-            </div>
-
-            <button className="btn btn-primary" type="submit">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
-              Add expense
-            </button>
-          </form>
+      <div className="page-body">
+        <div className="panel filter-bar">
+          <div className="field filter">
+            <label htmlFor="e-from">From</label>
+            <input className="input" id="e-from" type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} />
+          </div>
+          <div className="field filter">
+            <label htmlFor="e-to">To</label>
+            <input className="input" id="e-to" type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} />
+          </div>
+          <div className="field filter-wide">
+            <label htmlFor="e-cat">Category</label>
+            <select className="input" id="e-cat" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
+              <option value="">All categories</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="filter-summary" aria-live="polite">
+            {loading ? '' : `${countLabel} · ${formatCurrency(total)}`}
+          </div>
         </div>
 
-        {hasExpenses ? (
-          <div style={{ marginTop: 'var(--space-6)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 'var(--space-3)' }}>
-              <h4 style={{ margin: 0 }}>All expenses</h4>
-              <span className="text-muted" style={{ fontSize: 12 }}>{countLabel}</span>
-            </div>
-            <div className="card elev-sm" style={{ padding: 0 }}>
-              {expenses.map((expense) => {
-                const matchedCategory = categories.find(
-                  (category) => category.id === expense.category
-                );
+        {error && <InlineError message={error} />}
 
-                return (
-                  <div
-                    key={expense.id}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: 'var(--space-4)',
-                      padding: 'var(--space-3) var(--space-4)',
-                      borderTop: '1px solid var(--color-divider)',
-                    }}
-                  >
-                    <div>
-                      <div style={{ fontSize: 15 }}>{expense.description}</div>
-                      <div className="text-muted" style={{ fontSize: 12 }}>
-                        {matchedCategory?.name ?? 'Uncategorised'} · {expense.date}
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
-                      <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 800 }}>
-                        {formatCurrency(parseFloat(expense.amount))}
-                      </span>
-                      <button
-                        className="btn btn-ghost"
-                        style={{ color: 'var(--color-accent-700)' }}
-                        onClick={() => handleDeleteExpense(expense.id)}
-                      >
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+        {loading ? (
+          <div className="panel"><LoadingRow /></div>
+        ) : sorted.length === 0 ? (
+          <div className="panel panel-pad">
+            <div className="empty-title">No expenses in this range</div>
+            <p className="empty-body">Add an expense, or widen the dates and category filter above.</p>
           </div>
         ) : (
-          <div className="card elev-sm" style={{ marginTop: 'var(--space-6)', padding: 'var(--space-8) var(--space-6)' }}>
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: 'var(--space-3)' }}><path d="M12 2v20"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-            <h4 style={{ marginBottom: 'var(--space-1)' }}>No expenses yet</h4>
-            <p className="text-muted" style={{ margin: 0, maxWidth: '44ch' }}>Add your first expense above to start tracking your spending.</p>
+          <div className="panel">
+            <div className="table-scroll">
+              <div className="grid-row grid-head exp-cols">
+                <span>Date</span>
+                <span>Description</span>
+                <span>Category</span>
+                <span className="cell-right">Amount</span>
+                <span className="cell-right">Actions</span>
+              </div>
+              {sorted.map((e) => (
+                <div className="grid-row row-hover exp-cols" key={e.id}>
+                  <span className="cell-muted" style={{ whiteSpace: 'nowrap' }}>{formatExpenseDate(e.date)}</span>
+                  <span style={{ overflowWrap: 'anywhere' }}>{e.description || '—'}</span>
+                  <span className="cell-muted" style={{ fontSize: 12 }}>{categoryName(e.category)}</span>
+                  <span className="cell-right cell-strong">{formatCurrency(parseFloat(e.amount))}</span>
+                  <span className="cell-actions">
+                    <button type="button" className="btn btn-ghost" onClick={() => openEdit(e)}>Edit</button>
+                    <button type="button" className="btn btn-danger btn-ghost" onClick={() => handleDelete(e)}>Delete</button>
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <div className="stack-cards">
+              {sorted.map((e) => (
+                <div className="stack-card" key={e.id}>
+                  <div className="stack-card-top">
+                    <div className="stack-card-title">{e.description || categoryName(e.category)}</div>
+                    <div className="stack-card-money">{formatCurrency(parseFloat(e.amount))}</div>
+                  </div>
+                  <div className="stack-card-meta">
+                    {categoryName(e.category)} · {formatShortDate(new Date(e.date))}
+                  </div>
+                  <div className="stack-card-actions">
+                    <button type="button" className="btn btn-ghost" onClick={() => openEdit(e)}>Edit</button>
+                    <button type="button" className="btn btn-danger btn-ghost" onClick={() => handleDelete(e)}>Delete</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="table-foot">
+              <span>{countLabel} in range</span>
+              <span>{formatCurrency(total)}</span>
+            </div>
           </div>
         )}
       </div>
-    </div>
+
+      {modalOpen && (
+        <ExpenseModal
+          initialExpense={editing}
+          categories={categories}
+          onClose={() => setModalOpen(false)}
+          onSaved={handleSaved}
+        />
+      )}
+    </>
   );
 }
