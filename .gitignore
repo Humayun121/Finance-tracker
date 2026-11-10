@@ -11,3 +11,6 @@ db.sqlite3
 
 .env
 .env.prod
+
+# Django collectstatic output
+backend/staticfiles/
